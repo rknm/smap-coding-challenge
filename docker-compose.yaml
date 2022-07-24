@@ -10,4 +10,4 @@ services:
     tty: true
     ports: 
       - '8080:8080'
-    command: python manage.py runserver 8080
+    command: /bin/bash -c "python /app/dashboard/manage.py makemigrations && python /app/dashboard/manage.py migrate && python /app/dashboard/manage.py import && python /app/dashboard/manage.py runserver 0:8080"
