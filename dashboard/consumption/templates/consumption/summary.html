@@ -2,6 +2,115 @@
 
 {% block content %}
 
-<h1>{{message}}</h1>
+<h4 class="title is-4">電力消費概要(2016/07/15-2016/12/31)</h4>
+
+
+<nav class="level">
+  <div class="level-item has-text-centered">
+    <div class="box" style="border: solid 1px">
+      <p class="subtitle mb-5">合計使用量</p>
+      <p class="title">{{ sum.consumption__sum|floatformat:"0" }} Wh</p>
+    </div>
+  </div>
+  <div class="level-item has-text-centered">
+    <div class="box" style="border: solid 1px">
+      <p class="subtitle mb-5">平均使用量</p>
+      <p class="title">{{ mean.consumption__avg|floatformat:"0" }} Wh</p>
+    </div>
+  </div>
+</nav>
+
+<br>
+<h5 class="subtitle is-5">月別合計消費量</h5>
+<div id="chart-sum"></div>
+
+<h5 class="subtitle is-5">月別平均消費量</h5>
+<div id="chart-avg"></div>
+
+<br>
+
+<h4 class="title is-4">ユーザー一覧</h4>
+<table class="table table-striped table-bordered is-fullwidth">
+    <thead>
+        <tr>
+            <th>User ID</th>
+            <th>Area</th>
+            <th>Tariff</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.area }}</td>
+            <td>{{ user.tariff }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- データをJSON形式で取得するためにhtmlに埋め込む -->
+{{ totalMonthlyConsumption|json_script:"totalMonthlyConsumption" }}
+<script>
+    // 値がエスケープされ内容にする
+    // エスケープされることで異常な値になってしまう
+    {% autoescape off %}
+    var sum = {{ sum }};
+    var mean = {{ mean }};
+    {% endautoescape %}
+    // htmlに埋め込まれているJSONを取得する
+    let totalMonthlyConsumption = JSON.parse(document.getElementById("totalMonthlyConsumption").textContent) 
+    // グラフで扱うためにデータを変換する
+    // 日付の文字列をDate型に、平均値を四捨五入
+    for (let i=0; i<totalMonthlyConsumption.length; i++) {
+        totalMonthlyConsumption[i].monthly_date = new Date(totalMonthlyConsumption[i].monthly_date);
+        totalMonthlyConsumption[i].avg = Math.round(totalMonthlyConsumption[i].avg);
+    }
+
+    // c3jsでデータを可視化する
+    const chartSum = c3.generate({
+        bindto: '#chart-sum',
+        data: {
+            json: totalMonthlyConsumption,
+            keys: {
+                x: 'monthly_date',
+                value: ['sum']
+            },
+            labels: true,
+            type: 'bar'
+        },
+        axis: {
+            x: {
+                type: 'timeseries',
+                tick: {
+                    fit: true,
+                    format: '%Y/%m'
+                }
+            }
+        }
+    });
+
+    const chartAvg = c3.generate({
+        bindto: '#chart-avg',
+        data: {
+            json: totalMonthlyConsumption,
+            keys: {
+                x: 'monthly_date',
+                value: ['avg']
+            },
+            labels: true,
+            type: 'bar'
+        },
+        axis: {
+            x: {
+                type: 'timeseries',
+                tick: {
+                    fit: true,
+                    format: '%Y/%m'
+                }
+            }
+        }
+    });
+</script>
 
 {% endblock %}

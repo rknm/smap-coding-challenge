@@ -1,5 +1,229 @@
 {% extends 'consumption/layout.html' %}
 
 {% block content %}
+<div id="app">
+    <h4 class="title is-4">詳細選択</h4>
+    <nav class="level">
+        <div class="level-left">
 
+            <div class="tile">
+                <p class="control">
+                    <a class="button is-static is-medium" v-bind:class="{'is-loading':isLoading}">
+                    ID
+                    </a>
+                </p>
+                <div class="select is-medium mr-2">
+                    <select v-model="selectedUser" @change="onSelectedUserChange($event)" v-bind:disabled="isLoading">
+                        <option value="">ユーザーを選択</option>
+                        <option value="all">すべて</option>
+                        {% for user in users %}
+                        <option value="{{user.id}}"> {{ user.id }} </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="tile">
+                <p class="control">
+                    <a class="button is-static is-medium" v-bind:class="{'is-loading':isLoading}">
+                    エリア
+                    </a>
+                </p>
+                <div class="select is-medium mr-2">
+                    <select v-model="selectedArea" v-bind:disabled="selectedUser != 'all' || isLoading" @change="onSelectedAreaChange($event)">
+                        <option value="">エリアを選択</option>
+                        <option value="all">すべて</option>
+                        {% for area in areas %}
+                        <option value="{{area.area}}"> {{ area.area }} </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="tile">
+                <p class="control">
+                    <a class="button is-static is-medium" v-bind:class="{'is-loading':isLoading}">
+                    料金
+                    </a>
+                </p>
+                <div class="select is-medium mr-2">
+                    <select v-model="selectedTariff" v-bind:disabled="selectedUser != 'all' || isLoading" @change="onSelectedTariffChange($event)">
+                        <option value="">料金を選択</option>
+                        <option value="all">すべて</option>
+                        {% for tariff in tariffs %}
+                        <option value="{{tariff.tariff}}"> {{ tariff.tariff }} </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+        </div>
+    </nav>
+    <div v-show="!isLoading">
+        <nav class="level">
+            <div class="level-item has-text-centered">
+                <div class="box" style="border: solid 1px">
+                <p class="subtitle mb-5">合計使用量</p>
+                <p class="title">[[consumptionSum]] Wh</p>
+                </div>
+            </div>
+            <div class="level-item has-text-centered">
+                <div class="box" style="border: solid 1px">
+                <p class="subtitle mb-5">平均使用量</p>
+                <p class="title">[[consumptionAvg]] Wh</p>
+                </div>
+            </div>
+        </nav>
+        <h5 class="subtitle is-5">月別合計消費量</h5>
+        <div id="chart-sum">選択されていません</div>
+        <br>
+        <h5 class="subtitle is-5">月別平均消費量</h5>
+        <div id="chart-avg">選択されていません</div>
+    </div>
+</div>
+
+<script>
+    const App = {
+        data() {
+            return {
+                // ユーザーIDのセレクトボックスで選択されている値
+                selectedUser: "",
+                // エリアのセレクトボックスで選択されている値
+                selectedArea: "",
+                // 料金のセレクトボックスで選択されている値
+                selectedTariff: "",
+                // ロード状態
+                isLoading: false,
+                // 合計使用量
+                consumptionSum: 0,
+                // 平均使用量
+                consumptionAvg: 0,
+            }
+        },
+        compilerOptions: {
+            delimiters: ['[[', ']]'],
+        },
+        methods: {
+            // ユーザーIDに紐付く電力消費量を取得する関数
+            getUserConsumption: async function(userId) {
+                const data = await this.getConsumptionData('/api/userdata', {id: userId});
+                this.updateDashboard(data.data);
+            },
+            // エリアと料金に紐付く電力消費量を取得する関数
+            getOtherConsumption: async function(area, tariff) {
+                let params = {}
+                if (area !== 'all') {
+                    params.area = area;
+                }
+
+                if (tariff !== 'all') {
+                    params.tariff = tariff;
+                }
+                const data = await this.getConsumptionData('/api/otherdata', params);
+                this.updateDashboard(data.data);
+            },
+            // APIにアクセスしてデータを取得する
+            getConsumptionData: async function (apiUrl, params){
+                // ロード中に変更
+                this.isLoading = true;
+                // APIにアクセスしてデータを取得
+                let data = await axios.get(apiUrl, {params:params});
+                // ロード中を解除
+                this.isLoading = false;
+                // グラフで扱うためにデータを変換する
+                // 日付の文字列をDate型に、平均値を四捨五入
+                for (let i=0; i<data.data.monthly_data.length; i++) {
+                    data.data.monthly_data[i].monthly_date = new Date(data.data.monthly_data[i].monthly_date);
+                    data.data.monthly_data[i].avg = Math.round(data.data.monthly_data[i].avg);
+                }
+                return data;
+            },
+            // 表示内容を更新する関数
+            updateDashboard(data) {
+                // 合計使用量と平均使用量、グラフを更新
+                this.setConsumption(data.total_data)
+                this.drawChart(data.monthly_data);
+            },
+            // 合計使用量と平均使用量の更新
+            setConsumption(data) {
+                this.consumptionSum = data.sum.consumption__sum;
+                this.consumptionAvg =  Math.round(data.avg.consumption__avg);
+            },
+            // グラフを更新
+            drawChart(data) {
+                c3.generate({
+                        bindto: '#chart-sum',
+                        data: {
+                            json: data,
+                            keys: {
+                                x: 'monthly_date',
+                                value: ['sum']
+                            },
+                            labels: true,
+                            type: 'bar'
+                        },
+                        axis: {
+                            x: {
+                                type: 'timeseries',
+                                tick: {
+                                    fit: true,
+                                    format: '%Y/%m'
+                                }
+                            }
+                        }
+                    });
+                    c3.generate({
+                        bindto: '#chart-avg',
+                        data: {
+                            json: data,
+                            keys: {
+                                x: 'monthly_date',
+                                value: ['avg']
+                            },
+                            labels: true,
+                            type: 'bar'
+                        },
+                        axis: {
+                            x: {
+                                type: 'timeseries',
+                                tick: {
+                                    fit: true,
+                                    format: '%Y/%m'
+                                }
+                            }
+                        }
+                    });
+            },
+            // ユーザーIDのセレクトボックス変更時のイベント
+            onSelectedUserChange(event) {
+                if (!this.selectedUser || this.selectedUser === 'all') {
+                    if(!this.selectedArea || !this.selectedTariff) {
+                        return;
+                    }
+                    this.getOtherConsumption(this.selectedArea, this.selectedTariff);
+                    return;
+                }
+                this.getUserConsumption(this.selectedUser)
+            },
+            // エリアのセレクトボックス変更時のイベント
+            onSelectedAreaChange(event) {
+                if(!this.selectedArea || !this.selectedTariff) {
+                    return;
+                }
+                this.getOtherConsumption(this.selectedArea, this.selectedTariff);
+            },
+            // 料金のセレクトボックス変更時のイベント
+            onSelectedTariffChange(event) {
+                if(!this.selectedArea || !this.selectedTariff) {
+                    return;
+                }
+                this.getOtherConsumption(this.selectedArea, this.selectedTariff);
+            }
+        },
+        created() {
+        },
+    }
+
+    Vue.createApp(App).mount('#app')
+</script>
 {% endblock %}
